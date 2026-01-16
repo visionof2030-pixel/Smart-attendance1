@@ -60,7 +60,7 @@
   <div id="studentName" class="student-name">—</div>
   <div id="timer" class="timer">—</div>
   <div id="status" class="status">اضغط لبدء التحضير</div>
-  <button onclick="userStart()">ابدأ التحضير</button>
+  <button onclick="unlockAndStart()">ابدأ التحضير</button>
 </div>
 
 <script>
@@ -68,26 +68,27 @@
   let index = 0;
   let countdown = null;
   let recognition = null;
-  let voicesReady = false;
+  let audioUnlocked = false;
 
-  speechSynthesis.onvoiceschanged = () => {
-    voicesReady = true;
-  };
-
-  async function userStart() {
+  async function unlockAndStart() {
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      unlockSpeech();
-      startAttendance();
+
+      const unlock = new SpeechSynthesisUtterance("تم بدء التحضير");
+      unlock.lang = "ar-SA";
+      unlock.volume = 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(unlock);
+
+      audioUnlocked = true;
+
+      setTimeout(() => {
+        startAttendance();
+      }, 300);
+
     } catch {
       alert("يجب السماح باستخدام المايكروفون");
     }
-  }
-
-  function unlockSpeech() {
-    const u = new SpeechSynthesisUtterance("بدء التحضير");
-    u.lang = "ar-SA";
-    speechSynthesis.speak(u);
   }
 
   function startAttendance() {
@@ -120,10 +121,8 @@
   }
 
   function speakName(name) {
-    if (!voicesReady) {
-      setTimeout(() => speakName(name), 300);
-      return;
-    }
+    if (!audioUnlocked) return;
+
     speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(name);
     utter.lang = "ar-SA";
@@ -151,6 +150,7 @@
       markAbsent();
       return;
     }
+
     recognition = new SR();
     recognition.lang = "ar-SA";
     recognition.continuous = false;
@@ -210,7 +210,8 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         student: students[index],
-        status,
+        status: status,
+        source: "voice",
         timestamp: new Date().toISOString()
       })
     });
