@@ -60,106 +60,115 @@
   <div id="studentName" class="student-name">—</div>
   <div id="timer" class="timer">—</div>
   <div id="status" class="status">اضغط لبدء التحضير</div>
-  <button onclick="init()">ابدأ التحضير</button>
+  <button onclick="userStart()">ابدأ التحضير</button>
 </div>
 
 <script>
   const students = ["أحمد محمد", "سارة علي", "خالد عبدالله"];
-  let currentIndex = 0;
-  let countdownTimer = null;
+  let index = 0;
+  let countdown = null;
   let recognition = null;
-  let listening = false;
+  let voicesReady = false;
 
-  function init() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("المتصفح لا يدعم المايكروفون");
-      return;
+  speechSynthesis.onvoiceschanged = () => {
+    voicesReady = true;
+  };
+
+  async function userStart() {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      unlockSpeech();
+      startAttendance();
+    } catch {
+      alert("يجب السماح باستخدام المايكروفون");
     }
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => startAttendance())
-      .catch(() => alert("يجب السماح بالوصول إلى المايكروفون"));
+  }
+
+  function unlockSpeech() {
+    const u = new SpeechSynthesisUtterance("بدء التحضير");
+    u.lang = "ar-SA";
+    speechSynthesis.speak(u);
   }
 
   function startAttendance() {
-    currentIndex = 0;
+    index = 0;
     nextStudent();
   }
 
   function nextStudent() {
-    clearTimers();
+    clearInterval(countdown);
     stopListening();
 
-    if (currentIndex >= students.length) {
+    if (index >= students.length) {
       document.getElementById("studentName").innerText = "—";
       document.getElementById("status").innerText = "انتهى التحضير";
       document.getElementById("timer").innerText = "";
       return;
     }
 
-    const name = students[currentIndex];
+    const name = students[index];
     document.getElementById("studentName").innerText = name;
     document.getElementById("status").innerText = "بانتظار الرد...";
     document.getElementById("timer").innerText = "5";
 
-    speak(name);
+    speakName(name);
 
     setTimeout(() => {
       startListening();
-      startCountdown(5);
-    }, 1000);
+      startTimer(5);
+    }, 1200);
   }
 
-  function startCountdown(seconds) {
-    let remaining = seconds;
-    countdownTimer = setInterval(() => {
-      remaining--;
-      document.getElementById("timer").innerText = remaining;
-      if (remaining <= 0) {
-        clearTimers();
+  function speakName(name) {
+    if (!voicesReady) {
+      setTimeout(() => speakName(name), 300);
+      return;
+    }
+    speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(name);
+    utter.lang = "ar-SA";
+    utter.rate = 0.85;
+    utter.volume = 1;
+    speechSynthesis.speak(utter);
+  }
+
+  function startTimer(seconds) {
+    let t = seconds;
+    countdown = setInterval(() => {
+      t--;
+      document.getElementById("timer").innerText = t;
+      if (t <= 0) {
+        clearInterval(countdown);
         stopListening();
         markAbsent();
       }
     }, 1000);
   }
 
-  function speak(text) {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ar-SA";
-    utterance.rate = 0.9;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
-  }
-
   function startListening() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("التعرف الصوتي غير مدعوم في هذا المتصفح");
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      markAbsent();
       return;
     }
-
-    recognition = new SpeechRecognition();
+    recognition = new SR();
     recognition.lang = "ar-SA";
     recognition.continuous = false;
     recognition.interimResults = false;
-    listening = true;
 
-    recognition.onresult = function(event) {
-      const transcript = event.results[0][0].transcript.trim().toLowerCase();
-
-      clearTimers();
+    recognition.onresult = (e) => {
+      const text = e.results[0][0].transcript.trim().toLowerCase();
+      clearInterval(countdown);
       stopListening();
-
-      if (transcript.includes("حاضر") || transcript.includes("present")) {
+      if (text.includes("حاضر") || text.includes("present")) {
         markPresent();
-      } else if (transcript.includes("غائب")) {
-        markAbsent();
       } else {
         markAbsent();
       }
     };
 
-    recognition.onerror = function() {
-      clearTimers();
+    recognition.onerror = () => {
+      clearInterval(countdown);
       stopListening();
       markAbsent();
     };
@@ -168,49 +177,40 @@
   }
 
   function stopListening() {
-    if (recognition && listening) {
+    if (recognition) {
       recognition.stop();
       recognition = null;
-      listening = false;
-    }
-  }
-
-  function clearTimers() {
-    if (countdownTimer) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
     }
   }
 
   function markPresent() {
     document.getElementById("status").innerText = "حاضر";
     document.getElementById("status").className = "status present";
-    saveAttendance("present");
-    moveNext();
+    save("present");
+    next();
   }
 
   function markAbsent() {
     document.getElementById("status").innerText = "غائب";
     document.getElementById("status").className = "status absent";
-    saveAttendance("absent");
-    moveNext();
+    save("absent");
+    next();
   }
 
-  function moveNext() {
+  function next() {
     setTimeout(() => {
-      currentIndex++;
+      index++;
       nextStudent();
     }, 1200);
   }
 
-  function saveAttendance(status) {
+  function save(status) {
     fetch("https://your-backend-on-render.com/attendance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        student: students[currentIndex],
-        status: status,
-        source: "voice",
+        student: students[index],
+        status,
         timestamp: new Date().toISOString()
       })
     });
