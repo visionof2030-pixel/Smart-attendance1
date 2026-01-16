@@ -26,24 +26,40 @@ button{width:100%;padding:15px;font-size:18px;margin-top:15px;border-radius:8px;
   <div id="studentName" class="student-name">—</div>
   <div id="timer" class="timer">—</div>
   <div id="status" class="status">اضغط لبدء التحضير</div>
-  <button onclick="start()">ابدأ التحضير</button>
+  <button id="startBtn">ابدأ التحضير</button>
 </div>
-
-<audio id="player"></audio>
 
 <script>
 const students=["أحمد محمد","سارة علي","خالد عبدالله"];
 let index=0;
 let timer=null;
 let recognition=null;
+let audioContext=null;
+let audioReady=false;
 
-async function start(){
+document.getElementById("startBtn").addEventListener("click", async ()=>{
+
+  if(!audioContext){
+    audioContext=new (window.AudioContext||window.webkitAudioContext)();
+  }
+  await audioContext.resume();
+  audioReady=true;
+
+  const u=new SpeechSynthesisUtterance("تم بدء التحضير");
+  u.lang="ar-SA";
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+
   await navigator.mediaDevices.getUserMedia({audio:true});
+  startAttendance();
+});
+
+function startAttendance(){
   index=0;
   nextStudent();
 }
 
-async function nextStudent(){
+function nextStudent(){
   clearInterval(timer);
   stopListening();
 
@@ -59,24 +75,22 @@ async function nextStudent(){
   document.getElementById("status").innerText="بانتظار الرد...";
   document.getElementById("timer").innerText="5";
 
-  await playTTS(name);
+  speak(name);
 
   setTimeout(()=>{
     startListening();
     startTimer(5);
-  },500);
+  },1500);
 }
 
-async function playTTS(text){
-  const res=await fetch("https://your-backend-on-render.com/tts",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({text})
-  });
-  const data=await res.json();
-  const audio=document.getElementById("player");
-  audio.src=data.audioUrl;
-  audio.play();
+function speak(text){
+  if(!audioReady)return;
+  const utter=new SpeechSynthesisUtterance(text);
+  utter.lang="ar-SA";
+  utter.rate=0.85;
+  utter.volume=1;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utter);
 }
 
 function startTimer(sec){
